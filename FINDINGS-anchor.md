@@ -46,7 +46,11 @@ bearing 263.78, pitch +15.99, 1.18 deg rms.
 | PNOA 5 m DTM | **+1.84** |
 | old EU-DEM fan | +0.64 |
 
-**Caveat on the traced number.** +2.34 comes from `extract_skyline`, which is
+**Superseded by the refit in section 6.** The camera above and the +2.34 below
+were fitted against the defective trace. The current numbers are bearing
+265.12, pitch +13.83, roll -1.63, 0.23 deg rms, and +1.70 at az 280.6.
+
+**Caveat on the traced number.** +2.34 comes from `extract_skyline`, which was
 defective in this exact sector, see section 6. It is the top of the near
 treeline, not the terrain skyline. Treat the photograph as qualitative
 confirmation good to about a degree, not as a precision route. Do not quote a
@@ -89,7 +93,10 @@ Both routes were handed the same EU-DEM fan. So +9.82 and +9.74 agreeing to
 0.08 deg is shared-input agreement, not corroboration. That is why the error
 survived, and why CLAUDE.md's claim of two independent routes does not hold.
 
-## 6. NEW BUG: extract_skyline loses hazy distant terrain
+## 6. FIXED: extract_skyline lost hazy distant terrain
+
+Fixed in PR #1, merged as 3fd6fca. The diagnosis below is kept as
+written; the fix and the refit it forced are recorded after it.
 
 Found while checking the photograph. `extract_skyline` classifies pixels as sky
 by luminance and saturation (`sky_lum=115.0, sky_sat=0.32`). A distant ridge
@@ -131,6 +138,114 @@ even though the massif is plainly visible in the frame: the extractor discarded
 it, and the too-low trace matched the too-low EU-DEM fan. Inference, not proof,
 since the original run cannot be reproduced.
 
+### The fix
+
+A pixel that passes the absolute luminance and saturation test must now also
+stay within `--sky-tol` of the running mean of the sky in the `run` pixels
+above it. The reference follows the sky down the column, so a gradient passes
+and a ridge does not. Measured on this frame:
+
+| quantity | levels |
+|---|---|
+| hazy ridge step down from the sky | ~90 |
+| cloud texture, 99.999th percentile | ~27 |
+| cloud texture, worst | 50 |
+| **default `--sky-tol`** | **60** |
+
+That is only about 10 levels of margin over the worst cloud step, on one
+overcast frame. Clear skies, sunsets and strong gradients are untested. On
+this frame the new trace sits 1.2 to 2.8 deg above the old one depending on
+sector.
+
+### The refit, 2026-09-25
+
+The camera in section 3 was fitted against the defective trace, so it had to be
+redone before anything from the photograph could be quoted. Same frame, same
+eye 1.65 m, `--hfov 108`, `--mask 0,1100,830,1850`. The mask was checked on the
+overlay: the trace is suppressed across both parasols and resumes at x=830, and
+it stays above the flag tops.
+
+| free parameters | bearing | pitch | roll | focal | rms | below bare earth | az 280.6 |
+|---|---|---|---|---|---|---|---|
+| old fit, defective trace | 263.78 | +15.99 | - | - | 1.18 | - | +2.34 |
+| bearing, pitch | 266.49 | +14.93 | - | - | 0.49 | 36% | +2.70 |
+| + roll | 266.79 | +14.80 | -1.51 | - | 0.34 | 20% | +2.22 |
+| + focal | 265.30 | +14.13 | - | x1.078 | 0.42 | 30% | +2.60 |
+| **+ roll + focal** | **265.12** | **+13.83** | **-1.63** | **x1.098** | **0.23** | **5%** | **+1.70** |
+
+PNOA bare earth at az 280.6 is +1.83, so the best fit lands 0.14 deg *below*
+it, against +0.87 with bearing and pitch alone. The worry going in was that the
+corrected trace sat 1.3 to 1.6 deg above PNOA at the five crest points above
+while still wearing the old camera. Roll and focal together close that.
+
+Both extra parameters are physically plausible rather than slack being
+absorbed. Roll -1.63 deg is a handheld phone. Focal x1.098 turns the assumed
+108 deg field into 102.8 deg, so the `--hfov 108` guess for a Galaxy S23
+ultrawide with no EXIF focal length was about 5 deg too wide. Fitting either
+one alone leaves the trace-check warning standing; fitting both clears it, and
+the share of distant columns below bare earth falls from 36% to 5%.
+
+The recommended command for this frame is therefore:
+
+```bash
+python -m eclipse_sites.cli calibrate \
+    --image 20260730_201008.jpg \
+    --lat 43.4524508 --lon -6.0705374 --dem <pnoa_dtm.tif> \
+    --eye 1.65 --hfov 108 --mask 0,1100,830,1850 \
+    --fit-roll --fit-focal
+```
+
+**This is still not an independent route**, and the caveat in section 3 stands
+for the same reason as ever: `fit_camera` solves the camera against the PNOA
+fan, so agreement at az 280.6 is not confirmation. What the refit buys is that
+the photograph no longer *contradicts* PNOA, and that the residual is small
+enough for the canopy measurement to mean something. The terrain answer of
++8.62 does not depend on any of it.
+
+Median gap is -0.05 deg, still marginally negative where canopy should make it
+positive. Small enough to be trace noise on a hazy frame, not chased further.
+
+### How much margin `--sky-tol` actually has, on this frame
+
+Swept with the best camera free (roll and focal), everything else fixed:
+
+| `--sky-tol` | bearing | pitch | roll | rms | below bare earth | az 280.6 |
+|---|---|---|---|---|---|---|
+| 20 | 289.75 | +11.61 | +5.65 | 1.72 | 63% | +0.73 |
+| 30 | 265.51 | +13.97 | -1.60 | 0.50 | 11% | +2.12 |
+| 40 | 265.23 | +13.95 | -1.69 | 0.24 | 7% | +1.75 |
+| 50 | 265.13 | +13.83 | -1.67 | 0.23 | 4% | +1.75 |
+| **60** | **265.12** | **+13.83** | **-1.63** | **0.23** | **5%** | **+1.70** |
+| 70 | 264.97 | +13.79 | -1.68 | 0.28 | 5% | +1.58 |
+| 85 | 264.59 | +13.75 | -1.82 | 0.67 | 11% | +1.69 |
+| 100 | 263.91 | +14.29 | -1.91 | 1.22 | 34% | +2.86 |
+| 130 | 264.60 | +15.01 | -0.73 | 1.18 | 34% | +2.59 |
+| 200 | 264.60 | +15.01 | -0.73 | 1.18 | 34% | +2.59 |
+
+There is a stable plateau from about 40 to 70 where the fit barely moves. The
+default of 60 sits near its top, so on this frame the margin is asymmetric:
+roughly 20 levels of room on the tight side and 10 on the loose side. **50
+would be a slightly better centred default**, but on one frame that is not
+enough to justify moving it.
+
+Both failure modes are visible and they fail differently. Too loose degrades
+gracefully into the original bug: 130 and 200 give identical results, meaning
+the test has saturated and stopped doing anything, and the fit lands at bearing
+264.60 pitch +15.01, close to the old defective 263.78 / +15.99. Too tight
+fails hard and early: at 20 the bearing is 289.75, nearly 25 deg wrong, with
+roll swinging to +5.65 and 63% of distant columns below bare earth. A too-tight
+tolerance is therefore the more dangerous setting, because it does not creep,
+it jumps.
+
+### Bug found during the refit
+
+`--fit-focal` without `--fit-roll` crashed with an `IndexError`. The solver
+packs free parameters in order, so the focal scale is at index 2 when roll is
+fixed and index 3 when it is not, and `fit_camera` read a fixed `p[3]` in two
+places. Had the lengths ever lined up it would have silently read the roll as a
+focal scale instead of crashing. Fixed, with a round-trip test that synthesises
+through a longer lens than the fit is told about and recovers the scale.
+
 ## Status
 
 Applied since this was written, as a separate piece of work on coverage:
@@ -138,11 +253,16 @@ Applied since this was written, as a separate piece of work on coverage:
 `horizon.py`, a `coverage` CLI command, 7 tests, invariant 13, and the CLAUDE.md
 command list. None of that changes any horizon number.
 
-Still **not** applied, awaiting a decision:
+All three items that were once outstanding are now applied. The CLAUDE.md
+regression anchor reads +8.6 and carries +9.8 as a warning; the docstring of
+`test_render_view_candamo_matches_independent_analysis` and the README's Tests
+section both state that the route was never independent.
 
-- the CLAUDE.md regression anchor, which still says +9.8 and still claims two
-  independent routes. The repo currently contradicts itself: that section says
-  "if a change moves it, the change is wrong" while this file says +9.8 is dead.
-- the docstring of `test_render_view_candamo_matches_independent_analysis`,
-  which repeats the independence claim.
-- the README's Tests section, which repeats it again.
+Section 6 is fixed and the camera refitted. Nothing here is awaiting a
+decision.
+
+The one open item is `--sky-tol` on frames other than this one. The sweep above
+maps the safe band on the 2026-07-30 frame, but it is still one overcast
+evening. Clear skies, sunsets and strong gradients are untried. Testing them
+needs a second frame with known coordinates inside a DEM, which is not
+something more analysis of this frame can supply.

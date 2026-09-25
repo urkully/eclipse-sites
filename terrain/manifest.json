@@ -1,0 +1,21 @@
+{
+  "out_dir": "./terrain",
+  "target_crs": "EPSG:25829",
+  "written": [
+    {
+      "product": "dtm05",
+      "path": "./terrain/dtm05.tif",
+      "tiles": 7,
+      "res_m": 5.0,
+      "crs": "EPSG:25829",
+      "resampling": "bilinear",
+      "size": [
+        11209,
+        8206
+      ],
+      "normalised_heights": false
+    }
+  ],
+  "skipped": [],
+  "warnings": []
+}

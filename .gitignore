@@ -216,3 +216,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- eclipse-sites ---
+# DEM source tiles and derived rasters. Hundreds of MB, re-downloadable from
+# PNOA, and dtm05.tif is over GitHub's 100 MB file limit. manifest.json is
+# kept so the provenance of the merge is recorded.
+data-asturias/
+terrain/*
+!terrain/manifest.json
+
+.DS_Store

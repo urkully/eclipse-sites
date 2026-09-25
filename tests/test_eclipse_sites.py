@@ -686,6 +686,48 @@ def test_extract_skyline_finds_a_hard_edge(tmp_path):
     assert np.nanmedian(prof) == pytest.approx(80, abs=2)
 
 
+def test_extract_skyline_keeps_a_hazy_distant_ridge(tmp_path):
+    """A distant ridge under haze passes the absolute sky test.
+
+    It is pale and grey against an overcast sky, so luminance and saturation
+    alone call it sky and the trace drops to the dark treeline below, making
+    the horizon read low. See FINDINGS-anchor.md section 6.
+    """
+    from PIL import Image
+    from eclipse_sites.calibrate import extract_skyline
+    a = np.zeros((200, 300, 3), np.uint8)
+    # colours sampled from the 2026-07-30 Candamo frame at az ~270
+    a[:60] = (212, 217, 221)      # overcast sky
+    a[60:100] = (104, 122, 142)   # hazy ridge: lum 123, sat 0.27, passes
+    a[100:] = (47, 50, 50)        # dark near treeline
+    p = tmp_path / "h.png"
+    Image.fromarray(a).save(p)
+    prof = extract_skyline(str(p), smooth=1)
+    assert np.nanmedian(prof) == pytest.approx(60, abs=2)
+
+
+def test_extract_skyline_follows_a_cloudy_sky(tmp_path):
+    """Cloud texture and a gradient must not end the sky early.
+
+    Overcast skies step by tens of levels between cloud patches. A sky
+    tolerance set tight enough to trip on them puts the trace in the clouds.
+    """
+    from PIL import Image
+    from eclipse_sites.calibrate import extract_skyline
+    rng = np.random.default_rng(0)
+    a = np.zeros((200, 300, 3), np.float64)
+    a[:150] = np.linspace(170, 225, 150)[:, None, None]   # brightens downward
+    for y in range(0, 130, 25):     # cloud patches: the Candamo frame's sky
+        for x in range(0, 300, 50): # steps up to ~27 levels, 50 at worst
+            a[y:y + 20, x:x + 40] += rng.uniform(-30, 30)
+    a[:150] += rng.normal(0, 3, (150, 300, 3))            # sensor noise
+    a[150:] = 30
+    p = tmp_path / "g.png"
+    Image.fromarray(np.clip(a, 0, 255).astype(np.uint8)).save(p)
+    prof = extract_skyline(str(p), smooth=1)
+    assert np.all(prof == pytest.approx(150, abs=2))
+
+
 def test_masked_columns_are_ignored(tmp_path):
     from PIL import Image
     from eclipse_sites.calibrate import extract_skyline

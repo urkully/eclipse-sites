@@ -18,6 +18,7 @@ the canopy is absorbed into the camera angles, destroying the measurement.
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass
 
 import numpy as np
@@ -109,12 +110,24 @@ def pixel_to_altaz(x, y, intr, bearing_deg, pitch_deg, roll_deg=0.0,
 # ---------------------------------------------------------------- skyline
 
 def extract_skyline(path, masks=(), sky_lum=115.0, sky_sat=0.32, run=20,
-                    smooth=15):
+                    smooth=15, sky_tol=60.0):
     """Skyline row index per image column.
 
     masks: iterable of (x0, y0, x1, y1) boxes to ignore, for parasols, fences,
     poles and anything else in the foreground. Columns that are entirely masked
     or where no skyline is found come back as NaN.
+
+    sky_tol: a pixel that passes the brightness and saturation test is still
+    not sky if any channel differs by more than this from the mean of the last
+    `run` sky pixels above it. A distant ridge under haze against an overcast
+    sky is pale and desaturated and passes the absolute test, so without this
+    the trace drops to the dark treeline below it and the horizon reads low.
+    The reference follows the sky down the column, so a gradual sky gradient
+    is not mistaken for a ridge; a ridge whose edge is blurred over many rows
+    can still be. The default is set from the 2026-07-30 Candamo frame: hazy
+    ridges there step ~90 levels down from the sky, while cloud texture on the
+    same overcast sky steps up to ~27 levels, 50 at worst. Clear skies and
+    other light are untested.
     """
     from PIL import Image
     a = np.asarray(Image.open(path).convert("RGB"), dtype=np.float32)
@@ -132,9 +145,26 @@ def extract_skyline(path, masks=(), sky_lum=115.0, sky_sat=0.32, run=20,
     for x in range(W):
         if blocked[:, x].all():
             continue
-        col = sky[:, x] | blocked[:, x]     # masked pixels never end the sky run
+        col = (sky[:, x] | blocked[:, x]).tolist()  # masked never end sky run
+        blk = blocked[:, x].tolist()
+        px = a[:, x].tolist()               # plain floats: numpy per pixel is 10x slower
         cnt = 0
+        ref = deque()                       # recent sky colours above this row
+        tr = tg = tb = 0.0
         for y in range(H):
+            open_ = col[y] and not blk[y]
+            if open_:
+                r, g, b = px[y]
+                n = len(ref)
+                if n and max(abs(r - tr / n), abs(g - tg / n),
+                             abs(b - tb / n)) > sky_tol:
+                    col[y] = open_ = False  # bright and grey, but not this sky
+            if open_:
+                ref.append(px[y])
+                tr += r; tg += g; tb += b
+                if len(ref) > run:
+                    r0, g0, b0 = ref.popleft()
+                    tr -= r0; tg -= g0; tb -= b0
             if col[y]:
                 cnt = 0
             else:

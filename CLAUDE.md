@@ -80,7 +80,7 @@ terrain survey cannot see, and data preparation.
 ## Commands
 
 ```bash
-python -m pytest tests/ -q                      # 60 tests, no network, no DEM
+python -m pytest tests/ -q                      # 63 tests, no network, no DEM
 python -m eclipse_sites.cli site --lat .. --lon ..          # works with no DEM
 python -m eclipse_sites.cli coverage --lat .. --lon .. --dem d.tif --range ..
 python -m eclipse_sites.cli prepare --in <dump> --out <dir>

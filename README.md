@@ -183,9 +183,12 @@ is not a tree; it means the fit is wrong.
 There is also a **trace check**. A photograph cannot see ground below the
 ground, so a traced skyline sitting under bare earth is a defect, and the usual
 cause is pale distant terrain being read as sky. The trace then drops to nearer
-treetops and every angle in that sector is wrong. Raise `--sky-lum` or lower
-`--sky-sat` until it clears. On an overcast Candamo frame this moved the fit
-from 1.18 to 0.45 deg rms.
+treetops and every angle in that sector is wrong. `extract_skyline` also ends
+the sky wherever the colour steps by more than `--sky-tol` from the sky just
+above, which on the overcast Candamo frame catches the hazy ridges the other
+two thresholds let through. If the check still fires, raise `--sky-lum`, lower
+`--sky-sat` or lower `--sky-tol` until it clears. Before `--sky-tol` existed,
+tuning the first two on that frame moved the fit from 1.18 to 0.45 deg rms.
 
 ### Feeding it back
 
@@ -289,7 +292,7 @@ horizon the real value is variable and worth about half a degree.
 python -m pytest tests/ -v
 ```
 
-60 tests, no network, no DEM. Terrain cases are synthetic with analytic answers:
+63 tests, no network, no DEM. Terrain cases are synthetic with analytic answers:
 a wall at a known distance, azimuth convention, grid against point engine,
 horizon falling as you retreat from a cone. The ephemeris case is the real 2026
 eclipse checked against published local timings. There is also a brute-force

@@ -229,7 +229,7 @@ def cmd_calibrate(a):
     for m in a.mask:
         masks.append(tuple(int(v) for v in m.split(",")))
     sky = extract_skyline(a.image, masks=masks, sky_lum=a.sky_lum,
-                          sky_sat=a.sky_sat)
+                          sky_sat=a.sky_sat, sky_tol=a.sky_tol)
     print(f"  skyline     {int(np.isfinite(sky).sum())}/{intr.width} columns")
 
     z, tr, crs, cell = read_dem(a.dem)
@@ -285,8 +285,9 @@ def cmd_calibrate(a):
             print(f"  WARNING: a photograph cannot see ground below the "
                   f"ground. Pale distant\n  terrain is being read as sky, so "
                   f"the trace has dropped to nearer\n  treetops. Raise "
-                  f"--sky-lum (now {a.sky_lum:g}) or lower --sky-sat (now "
-                  f"{a.sky_sat:g}),\n  then check --out-overlay again.")
+                  f"--sky-lum (now {a.sky_lum:g}), lower --sky-sat (now "
+                  f"{a.sky_sat:g}) or lower\n  --sky-tol (now {a.sky_tol:g}), "
+                  f"then check --out-overlay again.")
 
     # the most direct feedback there is: what the photo puts where the Sun will
     sun_az = c.sun_az_at_max
@@ -518,6 +519,10 @@ def main(argv=None):
     k.add_argument("--sky-sat", dest="sky_sat", type=float, default=0.32,
                    help="saturation below which a pixel may be sky; lower it "
                         "for the same reason")
+    k.add_argument("--sky-tol", dest="sky_tol", type=float, default=60.0,
+                   help="largest colour step from the sky just above that "
+                        "still counts as sky; lower it for the same reason, "
+                        "raise it if a patchy sky ends the trace early")
     k.add_argument("--out-csv")
     k.add_argument("--out-canopy",
                    help="write a canopy profile for site --canopy-profile")

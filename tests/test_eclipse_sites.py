@@ -404,6 +404,30 @@ def test_fit_recovers_known_camera():
     assert f.pitch_deg == pytest.approx(14.7, abs=0.4)
 
 
+def test_fit_focal_without_roll_recovers_the_focal_length():
+    """--fit-focal alone must work, not just alongside --fit-roll.
+
+    The solver packs its free parameters in order, so the focal scale sits at
+    index 2 when roll is fixed and index 3 when it is not. Reading it from a
+    fixed index crashed on --fit-focal alone and would have read the roll as a
+    focal scale had the lengths ever lined up.
+    """
+    from eclipse_sites.calibrate import Intrinsics, fit_camera
+    az, alt = _scene()
+    # Synthesise through a longer lens than the fit is told about, so the only
+    # way to recover the scene is to find the scale.
+    true_f, assumed_f = 1620.0, 1500.0
+    sky = _synth_skyline(Intrinsics(4000, 1848, true_f, 2000.0, 924.0),
+                         az, alt, 283.0, 14.7)
+    intr = Intrinsics(4000, 1848, assumed_f, 2000.0, 924.0)
+    f = fit_camera(sky, intr, az, alt, np.full_like(az, 5000.0),
+                   bearing_prior=270.0, bearing_window=60.0, fit_focal=True)
+    assert f.roll_deg == 0.0
+    assert f.f_scale == pytest.approx(true_f / assumed_f, abs=0.03)
+    assert f.bearing_deg == pytest.approx(283.0, abs=0.6)
+    assert f.pitch_deg == pytest.approx(14.7, abs=0.4)
+
+
 def test_canopy_does_not_corrupt_a_correctly_anchored_fit():
     """Trees on near ground must land in the residual, not in the camera angles."""
     from eclipse_sites.calibrate import Intrinsics, fit_camera

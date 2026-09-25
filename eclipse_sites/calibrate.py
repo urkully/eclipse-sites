@@ -285,7 +285,7 @@ def fit_camera(skyline_y, intr, dem_az, dem_alt, dem_range,
     def cost(p):
         b, pit = p[0], p[1]
         roll = p[2] if fit_roll else 0.0
-        fs = p[3] if fit_focal else 1.0
+        fs = p[2 + int(fit_roll)] if fit_focal else 1.0
         alt, az = pixel_to_altaz(cols, ys, intr, b, pit, roll, fs)
         m = (az >= lo_az) & (az <= hi_az) & anchored(az)
         n = int(m.sum())
@@ -333,7 +333,7 @@ def fit_camera(skyline_y, intr, dem_az, dem_alt, dem_range,
 
     b, pit = p[0] % 360.0, p[1]
     roll = p[2] if fit_roll else 0.0
-    fs = p[3] if fit_focal else 1.0
+    fs = p[2 + int(fit_roll)] if fit_focal else 1.0
     alt, az = pixel_to_altaz(cols, ys, intr, b, pit, roll, fs)
     m = (az >= lo_az) & (az <= hi_az) & anchored(az)
     n = int(m.sum())

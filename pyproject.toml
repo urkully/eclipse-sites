@@ -2,11 +2,18 @@
 name = "eclipse-sites"
 version = "0.1.0"
 description = "Find places with a clear view of a solar eclipse, from terrain data"
+readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.24", "ephem>=4.1", "rasterio>=1.3", "pyproj>=3.4", "pillow>=9.0"]
 
 [project.scripts]
 eclipse-sites = "eclipse_sites.cli:main"
+
+# terrain/ is a working directory, not a package, and flat-layout auto-discovery
+# refuses to build while it cannot tell the difference.
+[tool.setuptools]
+packages = ["eclipse_sites"]
 
 [build-system]
 requires = ["setuptools>=64"]

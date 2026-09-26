@@ -1,8 +1,16 @@
 # eclipse-sites
 
+[![tests](https://github.com/urkully/eclipse-sites/actions/workflows/tests.yml/badge.svg)](https://github.com/urkully/eclipse-sites/actions/workflows/tests.yml)
+
 Find places with a clear view of a solar eclipse, using real terrain rather than
 guesswork. Built for Asturias and the 12 August 2026 totality, but nothing in it
 is specific to either.
+
+![The 2026 eclipse from the pool at San Roman de Candamo: the Sun's track falls towards a ridge, and totality clears it by 8.6 degrees](examples/candamo-pool.png)
+
+The pool at San Roman de Candamo, rendered from the DEM alone. The Sun reaches
+totality at +10.5 degrees with the skyline at +1.8, so it clears by 8.6. More
+output in [`examples/`](examples/).
 
 Two questions, both answered from a coordinate:
 
@@ -292,7 +300,7 @@ horizon the real value is variable and worth about half a degree.
 python -m pytest tests/ -v
 ```
 
-63 tests, no network, no DEM. Terrain cases are synthetic with analytic answers:
+64 tests, no network, no DEM. Terrain cases are synthetic with analytic answers:
 a wall at a known distance, azimuth convention, grid against point engine,
 horizon falling as you retreat from a cone. The ephemeris case is the real 2026
 eclipse checked against published local timings. There is also a brute-force
@@ -328,8 +336,16 @@ eclipse_sites/
   prepare.py     sort, merge and reproject a folder of downloaded tiles
   search.py      DEM IO, regional sweep, ranking, confirmation
   cli.py         command line
-tests/
+tests/           64 cases, synthetic terrain and one real eclipse
+examples/        output from real runs, with the commands that made it
+terrain/         where prepare writes merged DEMs, gitignored except the
+                 manifest that records how the merge was done
+FINDINGS-anchor.md   why the Candamo anchor moved from +9.8 to +8.6
 ```
 
 `horizon.py` and `ephemeris.py` have no geospatial dependencies and take plain
 numpy arrays, so they are easy to reuse or test in isolation.
+
+## License
+
+MIT. See `LICENSE`.

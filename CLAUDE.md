@@ -116,10 +116,11 @@ Do not regress these. Each has a test.
    `np.fmax` ignores NaN, so the sentinel survives. Checking only the far end
    of the ray does not catch it. This ranked a nodata strip as the eight best
    sites in Asturias at +100 degrees.
-1c. **`horizon_point` reports `reach_m`.** The grid engine masks what it could
-   not see; the point engine is what produces every final answer, so it says
-   how far it actually looked. A ray that ran out of DEM at 3 km has not shown
-   that the next 37 km are clear, it has only failed to look.
+1c. **`horizon_point` reports `reach_m` and `contiguous_m`.** The grid engine
+   masks what it could not see; the point engine is what produces every final
+   answer, so it says how far it actually looked. A ray that ran out of DEM at
+   3 km has not shown that the next 37 km are clear, it has only failed to
+   look. `contiguous_m` is the one to test, see invariant 13b.
 2. **Tile gaps must be declared nodata.** A gap filled with 0 reads as ground at
    sea level, looks like a cliff, and fakes a clear view. Optimistic, plausible,
    silent.
@@ -156,11 +157,21 @@ Do not regress these. Each has a test.
    is a ring: 0 to 359.5 has a hole in it as far as `np.interp` is concerned.
 13. **A horizon is only as good as the radius that produced it.** Coverage
    stops at the first gap, not the last data: ground seen beyond a hole does
-   not vouch for the hole. `coverage_point` reports `contiguous_m` for this,
-   separately from the looser `reach_m` both engines share. `edge_reach` is
+   not vouch for the hole. Both engines report `contiguous_m` for this,
+   separately from the looser `reach_m` they also share. `edge_reach` is
    the free bounds test and is necessary, never sufficient, because it cannot
    see nodata inside the bounds. Cross-checking a horizon against a second
    route that consumes the same fan proves only that the arithmetic agrees.
+13b. **Every caller tests `contiguous_m`, never `reach_m`.** The two differ
+   exactly when the ray crosses a hole and finds ground beyond it, which is
+   the case the check exists for. `site`, `search` and `calibrate` all tested
+   `reach_m`, so a gap at 200 m with data out to 40 km reported a full reach
+   and warned about nothing.
+13c. **A short-covered site gets no positive verdict.** `site` prints
+   INCONCLUSIVE and calls the clearance an upper bound rather than printing
+   an optimistic verdict with the caveat underneath, which is the order that
+   gets skimmed. `BLOCKED` is still reported on short coverage, because
+   unseen ground can only raise the horizon and so cannot un-block the Sun.
 
 ## Testing conventions
 

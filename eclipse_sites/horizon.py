@@ -50,10 +50,17 @@ class Horizon(NamedTuple):
     reach_m    farthest distance along the ray that had terrain data. Less
                than max_range_m means the ray left the raster (or crossed
                nodata) and anything beyond reach_m is unknown, not empty.
+    contiguous_m  distance out to which every sample had ground. This is the
+               radius the answer can be trusted to. reach_m exceeds it when
+               the ray crossed a hole and found ground again beyond, and that
+               far ground does not vouch for the hole. Test this one, not
+               reach_m, before believing a low horizon. Same meaning as
+               Coverage.contiguous_m, so the two engines agree.
     """
     alt_deg: float
     range_m: float
     reach_m: float
+    contiguous_m: float
 
 
 class Coverage(NamedTuple):
@@ -204,11 +211,13 @@ def horizon_point(z, cell_m, row, col, azimuths_deg, max_range_m=40000.0,
     row, col may be fractional. canopy_m is added to sampled ground heights,
     a crude allowance for tree cover; leave at 0 for bare terrain.
 
-    Returns dict {azimuth: Horizon(alt_deg, range_m, reach_m)}. Check reach_m
-    against max_range_m before trusting a low horizon: a ray that ran out of
-    raster at 3 km has not established that the next 37 km are clear, it has
-    only failed to look. This is the point-engine counterpart of the NaN
-    masking horizon_grid does for the same reason.
+    Returns dict {azimuth: Horizon(alt_deg, range_m, reach_m, contiguous_m)}.
+    Check contiguous_m against max_range_m before trusting a low horizon: a
+    ray that ran out of raster at 3 km has not established that the next 37 km
+    are clear, it has only failed to look. Check contiguous_m and not reach_m,
+    because a ray that crossed a hole at 3 km and found ground at 20 km has a
+    long reach and still has not seen the hole. This is the point-engine
+    counterpart of the NaN masking horizon_grid does for the same reason.
     """
     z = np.asarray(z, dtype=np.float32)
     step = step_m or cell_m / 2.0
@@ -223,17 +232,22 @@ def horizon_point(z, cell_m, row, col, azimuths_deg, max_range_m=40000.0,
         a = math.radians(az)
         sx, sy = math.sin(a), -math.cos(a)
         best, best_r, reach = -90.0, 0.0, 0.0
+        contiguous, broken = 0.0, False
         d = step
         while d <= max_range_m:
             zs = _bilinear(z, row + sy * d / cell_m, col + sx * d / cell_m)
             if np.isfinite(zs):
                 reach = d
+                if not broken:
+                    contiguous = d
                 ang = math.degrees(math.atan(
                     (float(zs) + canopy_m - eye - d * d / (2 * reff)) / d))
                 if ang > best:
                     best, best_r = ang, d
+            else:
+                broken = True
             d += step
-        out[az] = Horizon(best, best_r, reach)
+        out[az] = Horizon(best, best_r, reach, contiguous)
     return out
 
 

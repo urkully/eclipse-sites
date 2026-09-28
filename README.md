@@ -121,6 +121,42 @@ answer, which also catches nodata inside the bounds. `contiguous_m` stops at the
 first gap rather than the last data, because ground seen beyond a hole does not
 vouch for the hole.
 
+#### You do not have to remember to run it
+
+`site` and `search` now apply the rule themselves, on every run, from the same
+`contiguous_m`. If the ray at the Sun's bearing is not covered to `--range`,
+`site` **withholds the verdict** rather than printing an optimistic one with a
+caveat underneath it:
+
+```
+  horizon at az 280.6deg   +1.84deg (formed at 18678 m)
+  CLEARANCE         +8.62deg
+  verdict           INCONCLUSIVE, coverage too short
+
+  NO VERDICT. Contiguous coverage at this bearing is 37.8 km of the
+  40.0 km asked for: the ray ran out of DEM at 37.8 km.
+
+  The +8.62deg above is an UPPER BOUND, not an answer. Unseen ground can
+  only raise the horizon, so the real clearance is this or less. A 753 m
+  hill at 18.7 km hides nothing and still costs 1.2deg.
+
+  Extend the DEM, or re-run with --range 37000 to get a verdict
+  for the radius you actually have.
+```
+
+Two details worth knowing.
+
+**A blocked verdict still stands.** Terrain nobody looked at can only raise the
+horizon, never lower it, so it cannot un-block the Sun. `BLOCKED by terrain` is
+reported even on short coverage, with a note. Only a *positive* clearance is at
+risk, so only that one is withheld.
+
+**The test is `contiguous_m`, not `reach_m`.** These differ exactly when the
+ray crosses a hole and finds ground on the far side. A gap at 200 m with data
+out to 40 km gives a full `reach_m` and reads as perfectly covered, while the
+horizon is in fact unknown from 200 m outwards. That was silent before. Testing
+the loose measure is invariant 13's "necessary, never sufficient".
+
 ## What it will look like
 
 ```bash
@@ -246,7 +282,7 @@ region instead of being pinned to one town's value.
 | Flag | Default | Why |
 |---|---|---|
 | `--eye` | 1.6 | standing eye height |
-| `--range` | 40000 | horizon search distance, see the buffer rule |
+| `--range` | 40000 | horizon search distance, see the buffer rule. A verdict is withheld if the DEM does not cover it |
 | `--canopy` | 0 | metres of tree cover added to ground heights, on both passes |
 | `--az-step` | 2.5 | azimuth resolution of the sweep |
 | `--min-sep` | 20 | keeps results from clustering in one field |

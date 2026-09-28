@@ -86,7 +86,7 @@ def test_shift_matches_bruteforce_including_oversized_offsets():
 def test_flat_plane_is_slightly_below_zero():
     z = np.zeros((N, N), np.float32)
     r = horizon_point(z, CELL, C, C, [0, 90, 180, 270], max_range_m=1500)
-    for az, (ang, _, _) in r.items():
+    for az, (ang, _, _, _) in r.items():
         assert -0.2 < ang < 0.0     # curvature only
 
 
@@ -95,7 +95,7 @@ def test_wall_east_matches_analytic():
     z[:, C + 50:] = 100.0
     d = 500.0
     expect = math.degrees(math.atan((100 - 1.6 - d * d / (2 * R_EFF)) / d))
-    ang, rng, _ = horizon_point(z, CELL, C, C, [90], max_range_m=1500)[90]
+    ang, rng, _, _ = horizon_point(z, CELL, C, C, [90], max_range_m=1500)[90]
     assert ang == pytest.approx(expect, abs=1e-3)
     assert rng == pytest.approx(d, abs=CELL)
 
@@ -164,6 +164,80 @@ def test_observer_on_nodata_is_masked_not_wide_open():
     assert np.isnan(g[30:35, 30:35]).all()
     assert not (g == -90.0).any()
     assert np.nanmax(g) < 0.0           # flat ground, nothing above eye
+
+
+def test_horizon_point_reports_contiguous_not_just_reach():
+    """A hole in the middle of the raster must shorten the trusted radius.
+
+    reach_m is the loose measure: it records the farthest sample that had
+    ground, so a ray that crosses a gap at 200 m and finds ground again out to
+    1500 m reports a full reach and looks perfectly covered. The gap itself was
+    never seen. Testing reach_m against max_range_m therefore passes a site
+    whose horizon is unknown from 200 m outwards, which is invariant 13's
+    "necessary, never sufficient". contiguous_m stops at the first gap.
+    """
+    z = np.zeros((N, N), np.float32)
+    z[:, C + 20:C + 25] = np.nan        # a nodata band 200 m east, ground beyond
+    h = horizon_point(z, CELL, C, C, [90], max_range_m=1500)[90]
+
+    # The loose measure is fooled: ground on the far side carries reach to the
+    # end of the march, so the old `reach < max_range` test would not fire.
+    assert h.reach_m > 1400
+    # The honest one stops at the near edge of the band.
+    assert 150 < h.contiguous_m < 210
+    assert h.reach_m - h.contiguous_m > 1000
+
+    # Both engines must mean the same thing by the word, or the cheap
+    # pre-flight check and the real answer can disagree about the same ray.
+    cov = coverage_point(z, CELL, C, C, [90], max_range_m=1500)[90]
+    assert h.contiguous_m == pytest.approx(cov.contiguous_m, abs=2 * CELL)
+    assert h.reach_m == pytest.approx(cov.reach_m, abs=2 * CELL)
+
+
+def test_contiguous_equals_reach_when_there_is_no_hole():
+    """Without a gap the two measures must not drift apart."""
+    z = np.zeros((N, N), np.float32)
+    h = horizon_point(z, CELL, C, C, [0, 90, 180, 270], max_range_m=1500)
+    for az, v in h.items():
+        assert v.contiguous_m == v.reach_m, az
+
+
+def test_short_coverage_withholds_a_positive_verdict_but_not_a_blocked_one():
+    """Invariant 13c. Unseen ground can only raise the horizon.
+
+    So a clearance that looks good on partial coverage might not survive the
+    ground nobody looked at, and must not be stated as a verdict. A blocked
+    one is safe: more terrain cannot un-block the Sun. Printing the optimistic
+    verdict with the caveat underneath is the order that gets skimmed, which
+    is how the anchor stayed 1.2 deg optimistic for months.
+    """
+    from eclipse_sites.cli import verdict_for
+    covered, asked, cell = 40000.0, 40000.0, 5.0
+    short = 3000.0
+
+    # fully covered: the verdict is stated
+    assert verdict_for(8.6, covered, asked, cell) == ("comfortable", False)
+    assert verdict_for(2.0, covered, asked, cell) == ("tight", False)
+    assert verdict_for(-1.0, covered, asked, cell) == ("blocked", False)
+
+    # short coverage: positive answers are withheld, blocked still stands
+    assert verdict_for(8.6, short, asked, cell) == ("inconclusive", True)
+    assert verdict_for(2.0, short, asked, cell) == ("inconclusive", True)
+    assert verdict_for(-1.0, short, asked, cell) == ("blocked", True)
+
+
+def test_verdict_uses_contiguous_so_a_hole_is_not_excused_by_far_ground():
+    """Invariant 13b, at the decision rather than in the engine.
+
+    The caller must hand verdict_for contiguous_m. A ray that gapped at 3 km
+    and found ground again at 40 km has a full reach_m, and passing that would
+    state a verdict for terrain never seen.
+    """
+    from eclipse_sites.cli import verdict_for
+    contiguous, reach, asked, cell = 3000.0, 40000.0, 40000.0, 5.0
+    assert verdict_for(8.6, contiguous, asked, cell)[0] == "inconclusive"
+    # what the old code effectively did, and why it was silent
+    assert verdict_for(8.6, reach, asked, cell)[0] == "comfortable"
 
 
 def test_observer_outside_dem_raises():

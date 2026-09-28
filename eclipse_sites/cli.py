@@ -31,6 +31,22 @@ def _local(t, tz):
     return None if t is None else (t + dt.timedelta(hours=tz)).strftime("%H:%M:%S")
 
 
+def verdict_for(clear_deg, contiguous_m, range_m, cell_m):
+    """The buffer rule as a decision. Invariants 13b and 13c.
+
+    Short coverage withholds a positive verdict, because unseen ground can
+    only raise the horizon and so can only reduce a clearance. It does not
+    withhold a blocked one, for the same reason: more terrain cannot un-block
+    the Sun. Takes contiguous_m and never reach_m, see invariant 13b.
+    """
+    short = contiguous_m < range_m - cell_m
+    if clear_deg <= 0:
+        return "blocked", short
+    if short:
+        return "inconclusive", True
+    return ("comfortable" if clear_deg > 5 else "tight"), False
+
+
 def cmd_site(a):
     from .ephemeris import circumstances
     d = dt.date.fromisoformat(a.date)
@@ -83,14 +99,14 @@ def cmd_site(a):
                  f"  DEM covers lat {c0[1]:.4f} to {c1[1]:.4f}, "
                  f"lon {c0[0]:.4f} to {c1[0]:.4f}")
     floor_at = _skyline_floor(a)
-    hz, hr, reach = horizon_point(
+    hz, hr, reach, contig = horizon_point(
         z, cell, row - 0.5, col - 0.5, [c.sun_az_at_max],
         max_range_m=a.range, eye_h=a.eye, canopy_m=a.canopy)[c.sun_az_at_max]
     photo_hz, hz_bare = floor_at(c.sun_az_at_max), hz
     raised = photo_hz > hz
     hz = max(hz, photo_hz)
     clear = c.sun_alt_at_max - hz
-    truncated = reach < a.range - cell
+    holed = reach > contig + cell      # gap crossed, not simply ran out
     print(f"\n  horizon at az {c.sun_az_at_max:.1f}deg   {hz:+.2f}deg "
           f"(formed at {hr:.0f} m)")
     print(f"  CLEARANCE         {clear:+.2f}deg")
@@ -100,16 +116,33 @@ def cmd_site(a):
         said = (f"raised it to this from {hz_bare:+.2f}deg" if raised
                 else "says nothing at this bearing")
         print(f"  (photograph {said}, from {a.canopy_profile})")
-    print("  verdict           " + (
-        "VISIBLE, comfortable" if clear > 5 else
-        "VISIBLE, tight - confirm on the ground" if clear > 0 else
-        "BLOCKED by terrain"))
-    if truncated:
-        print(f"\n  WARNING: the ray ran out of DEM at {reach:.0f} m of the "
-              f"{a.range:.0f} m asked for.\n  Ground beyond that is unknown, "
-              f"not clear. A distant ridge outside the\n  raster would not "
-              f"appear above. Extend the DEM or lower --range to say\n  what "
-              f"you actually checked.")
+    state, short = verdict_for(clear, contig, a.range, cell)
+    inconclusive = state == "inconclusive"
+    print("  verdict           " + {
+        "inconclusive": "INCONCLUSIVE, coverage too short",
+        "comfortable": "VISIBLE, comfortable",
+        "tight": "VISIBLE, tight - confirm on the ground",
+        "blocked": "BLOCKED by terrain"}[state])
+    if inconclusive:
+        why = (f"the ray crossed a gap at {contig / 1000:.1f} km and found "
+               f"ground again\n  out to {reach / 1000:.1f} km, which vouches "
+               f"for nothing before it"
+               if holed else
+               f"the ray ran out of DEM at {contig / 1000:.1f} km")
+        print(f"\n  NO VERDICT. Contiguous coverage at this bearing is "
+              f"{contig / 1000:.1f} km of the\n  {a.range / 1000:.1f} km "
+              f"asked for: {why}.\n"
+              f"\n  The {clear:+.2f}deg above is an UPPER BOUND, not an answer. "
+              f"Unseen ground can\n  only raise the horizon, so the real "
+              f"clearance is this or less. A 753 m\n  hill at 18.7 km hides "
+              f"nothing and still costs 1.2deg.\n"
+              f"\n  Extend the DEM, or re-run with --range "
+              f"{int(contig // 1000) * 1000} to get a verdict\n  for the "
+              f"radius you actually have.")
+    elif short:
+        print(f"\n  NOTE: contiguous coverage is only {contig / 1000:.1f} km "
+              f"of the {a.range / 1000:.1f} km asked\n  for. BLOCKED stands "
+              f"anyway: unseen ground can only raise the horizon.")
 
     if a.view:
         import numpy as np
@@ -126,9 +159,13 @@ def cmd_site(a):
                     tz=a.tz, fov=a.fov)
         print(f"  wrote {a.view}")
 
+    # coverage_short is the correctly named key. ray_truncated is kept at the
+    # same value for existing consumers, though it now also covers a ray that
+    # crossed a gap rather than simply running out.
     write_json({"horizon_deg": hz, "clearance_deg": clear,
                 "horizon_range_m": hr, "reach_m": reach,
-                "ray_truncated": truncated})
+                "contiguous_m": contig, "coverage_short": short,
+                "inconclusive": inconclusive, "ray_truncated": short})
 
 
 def cmd_search(a):
@@ -162,8 +199,9 @@ def cmd_search(a):
         cut = [s for s in sites if s.get("ray_truncated")]
         if cut:
             print(f"  WARNING: {len(cut)} of the confirmed sites had the ray "
-                  f"leave the fine DEM\n  before --range. Their horizons are "
-                  f"only known as far as reach_m.")
+                  f"leave the fine DEM or\n  cross a gap before --range. Their "
+                  f"horizons are only known as far as\n  contiguous_m, and a "
+                  f"positive clearance from them is an upper bound.")
     if a.out_csv:
         write_csv(a.out_csv, sites)
         print(f"wrote {a.out_csv}")
@@ -245,10 +283,10 @@ def cmd_calibrate(a):
                       max_range_m=a.range, eye_h=a.eye)
     dem_alt = [h[q].alt_deg for q in azs]
     dem_rng = [h[q].range_m for q in azs]
-    short = sum(1 for q in azs if h[q].reach_m < a.range - cell)
+    short = sum(1 for q in azs if h[q].contiguous_m < a.range - cell)
     print(f"  horizon     {len(azs)} azimuths at {a.cal_az_step}deg from the DEM")
     if short:
-        print(f"              {short} of them ran out of DEM before "
+        print(f"              {short} of them are covered to less than "
               f"{a.range:.0f} m")
 
     fit = fit_camera(sky, intr, azs, dem_alt, dem_rng,

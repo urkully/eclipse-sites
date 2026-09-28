@@ -204,13 +204,15 @@ def confirm(fine_dem_path, sites, when, eye_h=1.6, canopy_m=0.0,
         except ValueError:
             dropped.append(dict(s, why="outside the fine DEM"))
             continue
-        hz, hr, reach = h[cc.sun_az_at_max]
+        hz, hr, reach, contig = h[cc.sun_az_at_max]
         r = dict(s)
         r["coarse_rank"] = r.pop("rank", None)
         r.update({"fine_clearance_deg": round(cc.sun_alt_at_max - hz, 2),
                   "horizon_deg": round(hz, 2), "horizon_range_m": round(hr),
                   "reach_m": round(reach),
-                  "ray_truncated": reach < max_range_m - cell,
+                  "contiguous_m": round(contig),
+                  # invariant 13: the honest radius stops at the first gap
+                  "ray_truncated": contig < max_range_m - cell,
                   "sun_alt_deg": round(cc.sun_alt_at_max, 2),
                   "sun_az_deg": round(cc.sun_az_at_max, 2),
                   "totality_s": round(cc.duration_s, 1)})
